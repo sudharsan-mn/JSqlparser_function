@@ -207,6 +207,10 @@ public class ColumnTableFinder extends ExpressionVisitorAdapter implements Selec
     public void visit(AnalyticExpression expr) {
         functionList.putIfAbsent(expr.getName(), new ArrayList<>());
         functionList.get(expr.getName()).add(expr.toString());
+
+        if (expr.getPartitionExpressionList() != null) {
+            expr.getPartitionExpressionList().accept(this);
+        }
         if (expr.getExpression() != null) {
             expr.getExpression().accept(this);
         }
@@ -219,10 +223,11 @@ public class ColumnTableFinder extends ExpressionVisitorAdapter implements Selec
         if (expr.getKeep() != null) {
             expr.getKeep().accept(this);
         }
-        if (expr.getFuncOrderBy() != null) {
+        if (expr.getOrderByElements() != null) {
             for (OrderByElement element : expr.getOrderByElements()) {
                 element.getExpression().accept(this);
             }
+        }
         }
         if (expr.getWindowElement() != null) {
             expr.getWindowElement().getRange().getStart().getExpression().accept(this);
