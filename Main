@@ -1,0 +1,72 @@
+import net.sf.jsqlparser.JSQLParserException;
+import net.sf.jsqlparser.parser.CCJSqlParserUtil;
+import net.sf.jsqlparser.statement.Statement;
+import net.sf.jsqlparser.statement.select.Select;
+import net.sf.jsqlparser.statement.select.SelectVisitor;
+
+
+import java.util.List;
+import java.util.Map;
+
+public class Main  {
+
+    public static void main(String[] args) {
+        String sql = "\n" +
+                "SELECT\n" +
+                "    u.user_id,\n" +
+                "    u.username,\n" +
+                "    p.post_id,\n" +
+                "    p.post_title,\n" +
+                "    COUNT(c.comment_id) AS total_comments,\n" +
+                "    MAX(c.comment_date) AS latest_comment_date\n" +
+                "FROM\n" +
+                "    users u\n" +
+                "JOIN\n" +
+                "    posts p ON u.user_id = p.user_id\n" +
+                "LEFT JOIN\n" +
+                "    comments c ON p.post_id = c.post_id\n" +
+                "WHERE\n" +
+                "    u.user_type = 'admin'\n" +
+                "    AND p.post_status = 'published'\n" +
+                "    AND EXISTS (\n" +
+                "        SELECT 1\n" +
+                "        FROM likes l\n" +
+                "        WHERE l.post_id = p.post_id\n" +
+                "          AND l.user_id = u.user_id\n" +
+                "    )\n" +
+                "GROUP BY\n" +
+                "    u.user_id, u.username, p.post_id, p.post_title\n" +
+                "HAVING\n" +
+                "    total_comments > 5\n" +
+                "ORDER BY\n" +
+                "    latest_comment_date DESC;\n" ;
+
+        try {
+            Statement statement = CCJSqlParserUtil.parse(sql);
+            ColumnTableFinder visitor = new ColumnTableFinder();
+            if(statement instanceof Select select){
+                select.accept((SelectVisitor) visitor);
+            }
+            Map<String, List<String>> v = visitor.getColumnTableMap();
+            for (Map.Entry<String, List<String>> entry : v.entrySet()) {
+
+                String table = entry.getKey();
+                List<String> column = entry.getValue();
+                    System.out.println("Table: " + table +  " \nColumn:" + column);
+            }
+            System.out.println();
+            Map<String, List<String>> f = visitor.functionMap();
+            for (Map.Entry<String, List<String>> entry : f.entrySet()) {
+                String fun = entry.getKey();
+                List<String> express = entry.getValue();
+                System.out.println("Function : "+ fun);
+                System.out.println("Expressions : "+ express);
+                System.out.println();
+
+            }
+
+        } catch (JSQLParserException e) {
+            e.printStackTrace();
+        }
+    }
+}
