@@ -1,0 +1,246 @@
+import net.sf.jsqlparser.expression.*;
+
+import net.sf.jsqlparser.schema.Column;
+import net.sf.jsqlparser.schema.Table;
+import net.sf.jsqlparser.statement.select.*;
+
+import java.util.*;
+
+
+public class ColumnTableFinder extends ExpressionVisitorAdapter implements SelectVisitor,OrderByVisitor,
+        FromItemVisitor,SelectItemVisitor,GroupByVisitor {
+    private final Map<String, List<String>> columnTableMap = new HashMap<>();
+    public List<String> withList = new ArrayList<>();
+    public List<String> aliasList = new ArrayList<>();
+    private String currentTable ;
+    private final Map<String, String> aliasMap = new HashMap<>();
+    public Map<String, List<String>> functionList = new HashMap<>();
+    boolean have = false;
+
+
+    public Map<String, List<String> > getColumnTableMap() {
+        Map<String, List<String>> columnTable = new HashMap<>();
+        for (Map.Entry<String, List<String>> entry : columnTableMap.entrySet()) {
+            String table = entry.getKey();
+            List<String> column = entry.getValue();
+            if(!withList.contains(table)){
+                columnTable.put(table,column);
+            }
+        }
+        return columnTable;
+    }
+    public Map<String, List<String>> functionMap() {
+        return functionList;
+    }
+
+    public void visit(Function function) {
+
+        functionList.putIfAbsent(function.getName(), new ArrayList<>());
+        functionList.get(function.getName()).add(function.toString());
+
+        if (function.getParameters() != null) {
+            function.getParameters().accept(this);
+        }
+
+        if (function.getKeep() != null) {
+            function.getKeep().accept(this);
+        }
+
+        if (function.getOrderByElements() != null) {
+            Iterator var2 = function.getOrderByElements().iterator();
+
+            while(var2.hasNext()) {
+                OrderByElement orderByElement = (OrderByElement)var2.next();
+                orderByElement.getExpression().accept(this);
+            }
+
+        }
+
+    }
+
+    @Override
+    public void visit(Column column) {
+        String columnName = column.getColumnName();
+        if(aliasList.contains(columnName) || have) {
+            have = false;
+            return;
+        }
+        String tableName = column.getTable() != null ? aliasMap.get(column.getTable().getName() ): currentTable;
+        if(columnTableMap.containsKey(tableName)){
+            List<String> retrievedList = columnTableMap.get(tableName);
+            if (!retrievedList.contains(columnName)) {
+                retrievedList.add(columnName);
+                columnTableMap.put(tableName, retrievedList);
+            }
+        }else{
+            List<String> finalColumnNames = columnTableMap.computeIfAbsent(tableName, k -> new ArrayList<>());
+            if (!finalColumnNames.contains(columnName)){
+                finalColumnNames.add(columnName);
+            }
+        }
+    }
+
+    @Override
+    public void visit(ParenthesedSelect selectBody) {
+        List<WithItem> withItemsList = selectBody.getWithItemsList();
+        if (withItemsList != null && !withItemsList.isEmpty()) {
+            for (WithItem withItem : withItemsList) {
+                withItem.accept((SelectVisitor) this);
+            }
+        }
+        selectBody.getSelect().accept((SelectVisitor) this);
+    }
+
+    @Override
+    public void visit(PlainSelect plainSelect) {
+        List<WithItem> withItemsList = plainSelect.getWithItemsList();
+        if (withItemsList != null && !withItemsList.isEmpty()) {
+            for (WithItem withItem : withItemsList) {
+                withItem.accept((SelectVisitor) this);
+            }
+        }
+        if (plainSelect.getFromItem() != null) {
+            plainSelect.getFromItem().accept(this);
+        }
+
+        if (plainSelect.getJoins() != null) {
+            for (Join join : plainSelect.getJoins()) {
+                join.getFromItem().accept(this);
+                join.getRightItem().accept(this);
+                for (Expression expression : join.getOnExpressions()) {
+                    expression.accept(this);
+                }
+            }
+        }
+        if (plainSelect.getSelectItems() != null) {
+            for (SelectItem<?> item : plainSelect.getSelectItems()) {
+                item.accept(this);
+            }
+        }
+
+        if (plainSelect.getWhere() != null) {
+            plainSelect.getWhere().accept(this);
+        }
+
+        if (plainSelect.getGroupBy() != null ){
+            plainSelect.getGroupBy().accept(this);
+        }
+        if (plainSelect.getHaving() != null) {
+            have = true;
+            plainSelect.getHaving().accept(this);
+        }
+        if (plainSelect.getOrderByElements() != null){
+            for (OrderByElement item : plainSelect.getOrderByElements()) {
+                item.accept( this);
+            }
+        }
+
+
+    }
+    @Override
+    public void visit(Select selectBody) {
+        selectBody.accept((SelectVisitor) this);
+    }
+
+    @Override
+    public void visit(SetOperationList list) {
+        List<WithItem> withItemsList = list.getWithItemsList();
+        if (withItemsList != null && !withItemsList.isEmpty()) {
+            for (WithItem withItem : withItemsList) {
+                withItem.accept((SelectVisitor) this);
+            }
+        }
+        for (Select selectBody : list.getSelects()) {
+            selectBody.accept((SelectVisitor) this);
+        }
+    }
+
+
+    @Override
+    public void visit(WithItem withItem) {
+        withList.add(withItem.getAlias().getName());
+        withItem.getSelect().accept((SelectVisitor) this);
+    }
+
+    @Override
+    public void visit(Table tableName) {
+        String tab  = tableName.getName();
+        currentTable = tab ;
+        String alias = tableName.getAlias() != null ? tableName.getAlias().getName() : tab ;
+        if(alias == null)aliasMap.put(tab ,tab );
+        else aliasMap.put(alias,tab );
+        columnTableMap.computeIfAbsent(tab , K -> new ArrayList<>());
+    }
+
+    @Override
+    public void visit(LateralSubSelect lateralSubSelect) {
+        lateralSubSelect.getSelect().accept((SelectVisitor) this);}
+
+    @Override
+    public void visit(TableStatement tableStatement) {
+        tableStatement.getTable().accept(this);
+    }
+
+    @Override
+    public void visit(TableFunction tableFunction) {
+        visit(tableFunction.getFunction());
+    }
+    @Override
+    public void visit(ParenthesedFromItem aThis) {
+    }
+
+    @Override
+    public void visit(Values aThis) {
+    }
+
+    @Override
+    public void visit(GroupByElement groupBy) {
+        groupBy.getGroupByExpressionList().accept(this);}
+
+    @Override
+    public void visit(SelectItem selectExpressionItem) {
+        if(selectExpressionItem.getAlias() != null) aliasList.add(selectExpressionItem.getAlias().getName());
+        selectExpressionItem.getExpression().accept(this);
+    }
+
+    @Override
+    public void visit(AnalyticExpression expr) {
+        functionList.putIfAbsent(expr.getName(), new ArrayList<>());
+        functionList.get(expr.getName()).add(expr.toString());
+        if (expr.getExpression() != null) {
+            expr.getExpression().accept(this);
+        }
+        if (expr.getDefaultValue() != null) {
+            expr.getDefaultValue().accept(this);
+        }
+        if (expr.getOffset() != null) {
+            expr.getOffset().accept(this);
+        }
+        if (expr.getKeep() != null) {
+            expr.getKeep().accept(this);
+        }
+        if (expr.getFuncOrderBy() != null) {
+            for (OrderByElement element : expr.getOrderByElements()) {
+                element.getExpression().accept(this);
+            }
+        }
+        if (expr.getWindowElement() != null) {
+            expr.getWindowElement().getRange().getStart().getExpression().accept(this);
+            expr.getWindowElement().getRange().getEnd().getExpression().accept(this);
+            expr.getWindowElement().getOffset().getExpression().accept(this);
+        }
+
+    }
+    @Override
+    public void visit(CastExpression expr) {
+        functionList.putIfAbsent(expr.keyword, new ArrayList<>());
+        functionList.get(expr.keyword).add(expr.toString());
+        expr.getLeftExpression().accept(this);
+    }
+
+    @Override
+    public void visit(OrderByElement orderBy) {
+        orderBy.getExpression().accept(this);
+
+    }
+}
