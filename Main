@@ -58,9 +58,11 @@ public class Main  {
             Map<String, List<String>> f = visitor.functionMap();
             for (Map.Entry<String, List<String>> entry : f.entrySet()) {
                 String fun = entry.getKey();
-                List<String> express = entry.getValue();
+                List<String> expressions = entry.getValue();
                 System.out.println("Function : "+ fun);
-                System.out.println("Expressions : "+ express);
+                for(String express : expressions){
+                    System.out.println("Expressions : "+ express);
+                }
                 System.out.println();
 
             }
