@@ -34,28 +34,9 @@ public class ColumnTableFinder extends ExpressionVisitorAdapter implements Selec
     }
 
     public void visit(Function function) {
-
         functionList.putIfAbsent(function.getName(), new ArrayList<>());
         functionList.get(function.getName()).add(function.toString());
-
-        if (function.getParameters() != null) {
-            function.getParameters().accept(this);
-        }
-
-        if (function.getKeep() != null) {
-            function.getKeep().accept(this);
-        }
-
-        if (function.getOrderByElements() != null) {
-            Iterator var2 = function.getOrderByElements().iterator();
-
-            while(var2.hasNext()) {
-                OrderByElement orderByElement = (OrderByElement)var2.next();
-                orderByElement.getExpression().accept(this);
-            }
-
-        }
-
+        super.visit(function);
     }
 
     @Override
@@ -207,32 +188,14 @@ public class ColumnTableFinder extends ExpressionVisitorAdapter implements Selec
     public void visit(AnalyticExpression expr) {
         functionList.putIfAbsent(expr.getName(), new ArrayList<>());
         functionList.get(expr.getName()).add(expr.toString());
-
+        super.visit(expr);
         if (expr.getPartitionExpressionList() != null) {
             expr.getPartitionExpressionList().accept(this);
-        }
-        if (expr.getExpression() != null) {
-            expr.getExpression().accept(this);
-        }
-        if (expr.getDefaultValue() != null) {
-            expr.getDefaultValue().accept(this);
-        }
-        if (expr.getOffset() != null) {
-            expr.getOffset().accept(this);
-        }
-        if (expr.getKeep() != null) {
-            expr.getKeep().accept(this);
         }
         if (expr.getOrderByElements() != null) {
             for (OrderByElement element : expr.getOrderByElements()) {
                 element.getExpression().accept(this);
             }
-        }
-        }
-        if (expr.getWindowElement() != null) {
-            expr.getWindowElement().getRange().getStart().getExpression().accept(this);
-            expr.getWindowElement().getRange().getEnd().getExpression().accept(this);
-            expr.getWindowElement().getOffset().getExpression().accept(this);
         }
 
     }
