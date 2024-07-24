@@ -16,7 +16,11 @@ public class ColumnTableFinder extends ExpressionVisitorAdapter implements Selec
     private final Map<String, String> aliasMap = new HashMap<>();
     public Map<String, List<String>> functionList = new HashMap<>();
     boolean have = false;
+    boolean columnNull = false;
 
+    public ColumnTableFinder() {
+        super.setSelectVisitor(this);
+    }
 
     public Map<String, List<String> > getColumnTableMap() {
         Map<String, List<String>> columnTable = new HashMap<>();
@@ -42,10 +46,12 @@ public class ColumnTableFinder extends ExpressionVisitorAdapter implements Selec
     @Override
     public void visit(Column column) {
         String columnName = column.getColumnName();
-        if(aliasList.contains(columnName) || have) {
-            have = false;
-            return;
+        if(aliasList.contains(columnName)) return;
+        if(columnNull){
+            currentTable = null;
+            columnNull = false;
         }
+
         String tableName = column.getTable() != null ? aliasMap.get(column.getTable().getName() ): currentTable;
         if(columnTableMap.containsKey(tableName)){
             List<String> retrievedList = columnTableMap.get(tableName);
@@ -62,17 +68,6 @@ public class ColumnTableFinder extends ExpressionVisitorAdapter implements Selec
     }
 
     @Override
-    public void visit(ParenthesedSelect selectBody) {
-        List<WithItem> withItemsList = selectBody.getWithItemsList();
-        if (withItemsList != null && !withItemsList.isEmpty()) {
-            for (WithItem withItem : withItemsList) {
-                withItem.accept((SelectVisitor) this);
-            }
-        }
-        selectBody.getSelect().accept((SelectVisitor) this);
-    }
-
-    @Override
     public void visit(PlainSelect plainSelect) {
         List<WithItem> withItemsList = plainSelect.getWithItemsList();
         if (withItemsList != null && !withItemsList.isEmpty()) {
@@ -83,7 +78,6 @@ public class ColumnTableFinder extends ExpressionVisitorAdapter implements Selec
         if (plainSelect.getFromItem() != null) {
             plainSelect.getFromItem().accept(this);
         }
-
         if (plainSelect.getJoins() != null) {
             for (Join join : plainSelect.getJoins()) {
                 join.getFromItem().accept(this);
@@ -92,25 +86,30 @@ public class ColumnTableFinder extends ExpressionVisitorAdapter implements Selec
                     expression.accept(this);
                 }
             }
+
         }
         if (plainSelect.getSelectItems() != null) {
             for (SelectItem<?> item : plainSelect.getSelectItems()) {
                 item.accept(this);
             }
         }
-
         if (plainSelect.getWhere() != null) {
+            if (plainSelect.getJoins() !=null) columnNull = true;
             plainSelect.getWhere().accept(this);
+
         }
 
         if (plainSelect.getGroupBy() != null ){
+            if (plainSelect.getJoins() !=null) columnNull = true;
             plainSelect.getGroupBy().accept(this);
+
         }
         if (plainSelect.getHaving() != null) {
-            have = true;
+            if (plainSelect.getJoins() !=null) columnNull = true;
             plainSelect.getHaving().accept(this);
         }
         if (plainSelect.getOrderByElements() != null){
+            if (plainSelect.getJoins() !=null) columnNull = true;
             for (OrderByElement item : plainSelect.getOrderByElements()) {
                 item.accept( this);
             }
@@ -121,6 +120,17 @@ public class ColumnTableFinder extends ExpressionVisitorAdapter implements Selec
     @Override
     public void visit(Select selectBody) {
         selectBody.accept((SelectVisitor) this);
+    }
+
+    @Override
+    public void visit(ParenthesedSelect selectBody) {
+        List<WithItem> withItemsList = selectBody.getWithItemsList();
+        if (withItemsList != null && !withItemsList.isEmpty()) {
+            for (WithItem withItem : withItemsList) {
+                withItem.accept((SelectVisitor) this);
+            }
+        }
+        selectBody.getSelect().accept((SelectVisitor) this);
     }
 
     @Override
@@ -181,7 +191,7 @@ public class ColumnTableFinder extends ExpressionVisitorAdapter implements Selec
     @Override
     public void visit(SelectItem selectExpressionItem) {
         if(selectExpressionItem.getAlias() != null) aliasList.add(selectExpressionItem.getAlias().getName());
-        selectExpressionItem.getExpression().accept(this);
+        super.visit(selectExpressionItem);
     }
 
     @Override
@@ -205,7 +215,6 @@ public class ColumnTableFinder extends ExpressionVisitorAdapter implements Selec
         functionList.get(expr.keyword).add(expr.toString());
         expr.getLeftExpression().accept(this);
     }
-
     @Override
     public void visit(OrderByElement orderBy) {
         orderBy.getExpression().accept(this);
